@@ -23,6 +23,8 @@ from pfrl.wrappers import atari_wrappers
 from envs.simple_cross_section_env import SimpleCrossSectionEnv
 from models.point_net_ae import *
 
+import os
+os.environ['PYOPENGL_PLATFORM'] = 'egl'
 
 def main():
     parser = argparse.ArgumentParser()
@@ -41,8 +43,8 @@ def main():
     parser.add_argument(
         "--input_file",
         type=str,
-        default='/home/abrar/thesis/cross_sections_rl/data/cross_section_data/sphere_resampled.npz',
-        help="directory of file used"
+        default=os.path.join(os.path.expanduser('~'), 'cross_section_rl/data/cross_section_data/sphere_resampled.npz'),
+        help="directory of file used",
     )
     parser.add_argument("--seed", type=int, default=0, help="Random seed [0, 2 ** 32)")
     parser.add_argument(
@@ -114,7 +116,7 @@ def main():
     parser.add_argument(
         "--update-interval",
         type=int,
-        default=128 * 8,
+        default=25,
         help="Interval (in timesteps) between PPO iterations.",
     )
     parser.add_argument(
@@ -202,13 +204,14 @@ def main():
         return env
 
     def make_batch_env(test):
-        print([(idx,env) for idx, env in enumerate(range(args.num_envs))] )
+        print('before make batch env', test, args.num_envs)
         vec_env = pfrl.envs.MultiprocessVectorEnv(
             [
                 (lambda: make_env(idx, test))
                 for idx, env in enumerate(range(args.num_envs))
             ]
         )
+        print('after make batch env')
         return vec_env
 
     sample_env = make_batch_env(test=False)
@@ -237,7 +240,7 @@ def main():
     autoencoder.load_state_dict(state_dict)
 
     autoencoder = autoencoder.eval()
-    del sample_env
+    #del sample_env
 
 
     model = RLModel(1024, action_space.low.size)
@@ -250,6 +253,7 @@ def main():
     #   next_state, _ = env.step(action) 
 
     opt = torch.optim.Adam(model.parameters(), lr=args.lr, eps=1e-5)
+    print('after creating opt')
 
 
 
@@ -269,6 +273,7 @@ def main():
         reconstructed_points, global_feat = autoencoder(pts)
         return global_feat.squeeze()
 
+    print('creating agent')
     agent = PPO(
         model,
         opt,
@@ -287,6 +292,7 @@ def main():
     if args.load:
         agent.load(args.load)
 
+    print('done making agent, about to train/eval')
     if args.demo:
         eval_stats = experiments.eval_performance(
             env=make_batch_env(test=True),
@@ -313,11 +319,10 @@ def main():
         step_hooks.append(
             experiments.LinearInterpolationHook(args.steps, args.lr, 0, lr_setter)
         )
-
         experiments.train_agent_batch_with_evaluation(
             agent=agent,
-            env=make_batch_env(False),
-            eval_env=make_batch_env(True),
+            env=sample_env,
+            eval_env=None,
             outdir=args.outdir,
             steps=args.steps,
             eval_n_steps=None,
@@ -328,6 +333,17 @@ def main():
             save_best_so_far_agent=False,
             step_hooks=step_hooks,
         )
+        '''
+        experiments.train_agent_batch(
+            agent=agent,
+            env=sample_env,
+            outdir=args.outdir,
+            steps=args.steps,
+            checkpoint_freq=args.checkpoint_frequency,
+            log_interval=args.log_interval,
+            step_hooks=step_hooks,
+        )
+        '''
 
 
 class RLModel(torch.nn.Module):

@@ -18,13 +18,15 @@ sys.path.append(parentdir)
 
 import utils
 
-os.environ['PYOPENGL_PLATFORM'] = 'osmesa'
+import time
+
+os.environ['PYOPENGL_PLATFORM'] = 'egl'
 
 
 
 class SimpleCrossSectionEnv(gym.Env):
 
-  def __init__(self, input_file, k_state_neighborhood=5, previous_mesh_neighborhood=5, next_mesh_neighborhood=5, bezier_interpolation=False, same_obs_size=False):
+  def __init__(self, input_file, k_state_neighborhood=5, previous_mesh_neighborhood=5, next_mesh_neighborhood=5, same_obs_size=False):
     data = np.load(input_file, allow_pickle=True)
     self.M = data['cross_sections']
     self.sample_spacing = data['step']
@@ -36,11 +38,9 @@ class SimpleCrossSectionEnv(gym.Env):
       if len(x) > longest:
         longest = len(x)
     shape = (longest,2)
-    self.action_space = spaces.Box(low=-np.inf, high=np.inf, dtype=np.float32, shape=shape)
+    #self.action_space = spaces.Box(low=-np.inf, high=np.inf, dtype=np.float32, shape=shape)
+    self.action_space = spaces.Box(low=-1, high=1, dtype=np.float32, shape=shape)
     self.observation_space = spaces.Box(low=-np.inf, high=np.inf, dtype=np.float32, shape=shape)
-
-    if bezier_interpolation:
-      self.M = utils.bezier_interpolate_list(self.M)
 
     # for x in self.M:
     #   print(x.shape)
@@ -60,16 +60,18 @@ class SimpleCrossSectionEnv(gym.Env):
     self.render_ax = None
     self.renderer = pyrender.OffscreenRenderer(512, 512)
 
+    self.state = None
+
     self.pts = None
 
   def step(self, action):
+    #print('step_i: {} \t step_t: {}'.format(self.step_i, self.step_t))
     if self.step_i == len(self.M):
       # we are done. let's reconstruct the entire mesh and calculate the metrics as a reward
       pts, tri_face, tetra_face, reward = utils.triangulate_list_and_reward(self.Mhat, self.sample_spacing)
       print('final reward', reward)
-      return None, reward, True, {}
+      return np.array(self.state_neighborhood()), reward, True, {}
 
-    # print('step_i: {} \t step_t: {}'.format(self.step_i, self.step_t))
 
     if type(action) != int:
       action = action.reshape(-1, 2)
@@ -98,6 +100,7 @@ class SimpleCrossSectionEnv(gym.Env):
         continue
       # print('m add', idx)
       to_reconstruct.append(self.M[idx])
+    self.to_recon = to_reconstruct
 
     # for easy case, sample spacing can be consistent. for subsampling, we might need to employ some tricks.
 
@@ -163,15 +166,21 @@ class SimpleCrossSectionEnv(gym.Env):
     return np.array(neighborhood)
 
 
-  def reward_function(self, reward_types):
-    # TODO: make reward functions based on quality
-    return 0
-
   def reset(self):
+
+
+    if len(self.Mhat) != 0:
+        pts, tri_face, tetra_face, reward = utils.triangulate_list_and_reward(self.Mhat, self.sample_spacing)
+        img = self.draw(pts, tri_face)
+        cv2.imwrite('{}_{}_{:.4f}.png'.format('saved/sphere', time.time(), reward), img)
+    else:
+        pts, tri_face, tetra_face, reward = utils.triangulate_list_and_reward(self.M, self.sample_spacing)
+        img = self.draw(pts, tri_face)
+        cv2.imwrite('{}_{}_{:.4f}.png'.format('saved/sphere', time.time(), reward), img)
+
     self.Mhat = []
     self.step_i = 0
     self.step_t = 0
-    print('resetting')
 
     neighborhood = []
     if self.same_obs_size:
@@ -200,7 +209,25 @@ class SimpleCrossSectionEnv(gym.Env):
       return
 
     print('render')
-    mesh = trimesh.Trimesh(self.pts, self.tri_face)
+
+    img = self.draw(self.pts, self.tri_face)
+
+    if self.first_rendering:
+      self.first_rendering = False
+      self.render_ax = plt.imshow(img)
+    else:
+      self.render_ax.set_data(img)
+
+    if filename != None:
+      # utils.save_3d_surface_wiremesh(self.pts, self.tri_face, '{}_{}.png'.format(filename, self.step_t))
+      cv2.imwrite('{}_{}.png'.format(filename, self.step_t), img)
+    print('done1')
+    plt.pause(.001)
+
+    print('done2')
+
+  def draw(self, pts, tri_face):
+    mesh = trimesh.Trimesh(pts, tri_face)
     mesh = pyrender.Mesh.from_trimesh(mesh, smooth=False, wireframe=False)
 
     scene = pyrender.Scene()
@@ -223,20 +250,7 @@ class SimpleCrossSectionEnv(gym.Env):
     #                         [ 0,  0,  0,  1]
     #                         ])
     img, _ = self.renderer.render(scene)
-
-    if self.first_rendering:
-      self.first_rendering = False
-      self.render_ax = plt.imshow(img)
-    else:
-      self.render_ax.set_data(img)
-
-    if filename != None:
-      # utils.save_3d_surface_wiremesh(self.pts, self.tri_face, '{}_{}.png'.format(filename, self.step_t))
-      cv2.imwrite('{}_{}.png'.format(filename, self.step_t), img)
-    print('done1')
-    plt.pause(.001)
-
-    print('done2')
+    return img
 
 
   def close(self):
@@ -247,16 +261,17 @@ class SimpleCrossSectionEnv(gym.Env):
     return reward
 
 
-# input_file = '/home/abrar/thesis/cross_sections_rl/data/cross_section_data/sphere_resampled.npz'
-# env = SimpleCrossSectionEnv(input_file)
+#input_file = '/home1/07435/aanwar/cross_section_rl/data/cross_section_data/sphere_resampled.npz'
+#env = SimpleCrossSectionEnv(input_file, same_obs_size=True)
 
-# print(env.observation_space)
-# env.reset()
+#print(env.observation_space)
+#env.reset()
 
-# # for i in range(len(env.M)):
-# for i in range(50):
-#   obs, reward, _, _ = env.step(0)
-#   print(obs.shape, reward)
+# for i in range(len(env.M)):
+#done = False
+#while not done:
+  #obs, reward, done, _ = env.step(0)
+  #print(obs.shape, reward, done)
 #   env.render()
 
 

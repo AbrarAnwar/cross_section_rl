@@ -23,7 +23,7 @@ else:
 
 # get cross sections, stack them as points, then reconstruct them in an auto-encoder setup. The middle spot is the latent space
 def main():
-    input_file = '/home/abrar/thesis/cross_sections_rl/data/cross_section_data/sphere_resampled.npz'
+    input_file = os.path.join(parentdir, 'data/cross_section_data/sphere_resampled.npz')
     data = np.load(input_file, allow_pickle=True)
     M = data['cross_sections']
     sample_spacing = data['step']
