@@ -38,8 +38,12 @@ class SimpleCrossSectionEnv(gym.Env):
       if len(x) > longest:
         longest = len(x)
     shape = (longest,2)
+    
+    self.min_action = -.1
+    self.max_action = .1
+
     #self.action_space = spaces.Box(low=-np.inf, high=np.inf, dtype=np.float32, shape=shape)
-    self.action_space = spaces.Box(low=-1, high=1, dtype=np.float32, shape=shape)
+    self.action_space = spaces.Box(low=self.min_action, high=self.max_action, dtype=np.float32, shape=shape)
     self.observation_space = spaces.Box(low=-np.inf, high=np.inf, dtype=np.float32, shape=shape)
 
     # for x in self.M:
@@ -65,6 +69,12 @@ class SimpleCrossSectionEnv(gym.Env):
     self.pts = None
 
   def step(self, action):
+
+
+    print('action, min, max, mean', min(action), max(action), np.mean(action))
+    #action = min(max(action, self.min_action), self.max_action)
+    action = np.clip(action, self.min_action, self.max_action)
+
     #print('step_i: {} \t step_t: {}'.format(self.step_i, self.step_t))
     if self.step_i == len(self.M):
       # we are done. let's reconstruct the entire mesh and calculate the metrics as a reward
@@ -172,11 +182,23 @@ class SimpleCrossSectionEnv(gym.Env):
     if len(self.Mhat) != 0:
         pts, tri_face, tetra_face, reward = utils.triangulate_list_and_reward(self.Mhat, self.sample_spacing)
         img = self.draw(pts, tri_face)
-        cv2.imwrite('{}_{}_{:.4f}.png'.format('saved/sphere', time.time(), reward), img)
+        t = time.time()
+        cv2.imwrite('{}_{}_{:.4f}.png'.format('saved/sphere', t, reward), img)
+
+        mesh = trimesh.Trimesh(vertices=pts, faces=tetra_face)
+        mesh.export(file_obj='{}_{}_{:.4f}.stl'.format('saved/sphere', t, reward))
+
+
     else:
         pts, tri_face, tetra_face, reward = utils.triangulate_list_and_reward(self.M, self.sample_spacing)
         img = self.draw(pts, tri_face)
-        cv2.imwrite('{}_{}_{:.4f}.png'.format('saved/sphere', time.time(), reward), img)
+        t = time.time()
+        cv2.imwrite('{}_{}_{:.4f}.png'.format('saved/sphere', t, reward), img)
+
+        mesh = trimesh.Trimesh(vertices=pts, faces=tetra_face)
+        mesh.export(file_obj='{}_{}_{:.4f}.stl'.format('saved/sphere', t, reward))
+
+
 
     self.Mhat = []
     self.step_i = 0
