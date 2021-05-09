@@ -43,7 +43,7 @@ class SimpleCrossSectionEnv(gym.Env):
     self.max_action = .1
 
     #self.action_space = spaces.Box(low=-np.inf, high=np.inf, dtype=np.float32, shape=shape)
-    self.action_space = spaces.Box(low=self.min_action, high=self.max_action, dtype=np.float32, shape=shape)
+    self.action_space = spaces.Box(low=self.min_action, high=self.max_action, dtype=np.float32, shape=(longest*2,))
     self.observation_space = spaces.Box(low=-np.inf, high=np.inf, dtype=np.float32, shape=shape)
 
     # for x in self.M:
@@ -75,7 +75,7 @@ class SimpleCrossSectionEnv(gym.Env):
     #action = min(max(action, self.min_action), self.max_action)
     action = np.clip(action, self.min_action, self.max_action)
 
-    #print('step_i: {} \t step_t: {}'.format(self.step_i, self.step_t))
+    # print('step_i: {} \t step_t: {}'.format(self.step_i, self.step_t))
     if self.step_i == len(self.M):
       # we are done. let's reconstruct the entire mesh and calculate the metrics as a reward
       pts, tri_face, tetra_face, reward = utils.triangulate_list_and_reward(self.Mhat, self.sample_spacing)
@@ -178,6 +178,8 @@ class SimpleCrossSectionEnv(gym.Env):
 
   def reset(self):
 
+    if not os.path.exists('saved'):
+        os.makedirs('saved')
 
     if len(self.Mhat) != 0:
         pts, tri_face, tetra_face, reward = utils.triangulate_list_and_reward(self.Mhat, self.sample_spacing)
