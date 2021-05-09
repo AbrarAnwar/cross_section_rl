@@ -62,19 +62,27 @@ def pyvistaToTrimeshFaces(cells):
 # main difference here is it uses pyvista
 def triangulate_list_and_reward(subsequence, step, reward_type='scaled_jacobian', weights=None):
   # stack by heights
-  pts = np.empty(shape = (0,3))
-  for i,m in enumerate(subsequence):
-    col_to_add = np.ones(len(m))*i*step
-    res = np.hstack([m, np.atleast_2d(col_to_add).T])
-    pts = np.concatenate([pts, res])
 
+  pts = np.empty(shape = (0,3))
+  wts = np.empty(shape = (0,1))
+  if weights is not None:
+    for i, (m,w) in enumerate(zip(subsequence, weights)):
+      col_to_add = np.ones(len(m))*i*step
+      res = np.hstack([m, np.atleast_2d(col_to_add).T])
+      pts = np.concatenate([pts, res])
+      wts = np.concatenate([wts, np.array(w)])
+    weights = wts
+
+  else: 
+    for i, m in enumerate(subsequence):
+      col_to_add = np.ones(len(m))*i*step
+      res = np.hstack([m, np.atleast_2d(col_to_add).T])
+      pts = np.concatenate([pts, res])
   # use pyvista to turn this into a PolyData
   
   # print(poly)
 
   if(weights is not None):
-    print(weights.shape)
-    print(pts.shape)
     tetra_face = np.array(WeightedDelaunay(pts, weights))
 
     # make it compatible with pyvista

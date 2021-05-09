@@ -20,7 +20,6 @@ from pfrl.agents import PPO
 from pfrl.policies import SoftmaxCategoricalHead
 from pfrl.wrappers import atari_wrappers
 
-from envs.simple_cross_section_env import SimpleCrossSectionEnv
 from models.point_net_ae import *
 
 import os
@@ -28,9 +27,7 @@ os.environ['PYOPENGL_PLATFORM'] = 'egl'
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--env", type=str, default="simple", help="type of env"
-    )
+    parser.add_argument("--env_type", type=str, default="no_weights", help="weights, no_weights")
     parser.add_argument(
         "--gpu", type=int, default=0, help="GPU device ID. Set to -1 to use CPUs only."
     )
@@ -170,6 +167,14 @@ def main():
 
     
     args = parser.parse_args()
+
+
+    if args.env_type == "no_weights":
+        from envs.simple_cross_section_env import SimpleCrossSectionEnv
+    elif args.env_type == "weights":
+        from envs.simple_cross_section_env_weighted import SimpleCrossSectionEnv
+    else: 
+        sys.exit('Please use a proper env_type argument. ')
 
     import logging
 

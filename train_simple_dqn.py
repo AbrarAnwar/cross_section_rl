@@ -26,7 +26,9 @@ from pfrl import nn as pnn
 from pfrl import q_functions, replay_buffers, utils
 from pfrl.agents.dqn import DQN
 
-from envs.simple_cross_section_env import SimpleCrossSectionEnv
+import os
+os.environ['PYOPENGL_PLATFORM'] = 'egl'
+
 from models.point_net_ae import *
 
 def main():
@@ -44,6 +46,7 @@ def main():
             " If it does not exist, it will be created."
         ),
     )
+    parser.add_argument("--env_type", type=str, default="no_weights", help="weights, no_weights")
     parser.add_argument("--seed", type=int, default=0, help="Random seed [0, 2 ** 32)")
     parser.add_argument("--gpu", type=int, default=0)
     parser.add_argument("--final-exploration-steps", type=int, default=10 ** 4)
@@ -102,6 +105,12 @@ def main():
 
     # Set a random seed used in PFRL
     utils.set_random_seed(args.seed)
+    if args.env_type == "no_weights":
+        from envs.simple_cross_section_env import SimpleCrossSectionEnv
+    elif args.env_type == "weights":
+        from envs.simple_cross_section_env_weighted import SimpleCrossSectionEnv
+    else: 
+        sys.exit('Please use a proper env_type argument. ')
 
     args.outdir = experiments.prepare_output_dir(args, args.outdir, argv=sys.argv)
     print("Output files are saved in {}".format(args.outdir))

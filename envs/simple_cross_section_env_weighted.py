@@ -38,18 +38,26 @@ class SimpleCrossSectionEnv(gym.Env):
       if len(x) > longest:
         longest = len(x)
     shape = (longest,2)
+    self.longest = longest
     
     self.min_action = -.1
     self.max_action = .1
 
     #self.action_space = spaces.Box(low=-np.inf, high=np.inf, dtype=np.float32, shape=shape)
-    self.action_space = spaces.Box(low=self.min_action, high=self.max_action, dtype=np.float32, shape=(longest*2,))
+
+    default = np.ones(shape=(longest*2))
+    weight_clip = np.ones(shape=longest)
+
+    
+    self.action_space = spaces.Box(low=np.concatenate([default*self.min_action, weight_clip]), high=np.concatenate([default*self.max_action, weight_clip]), dtype=np.float32, shape=(longest*3,))
     self.observation_space = spaces.Box(low=-np.inf, high=np.inf, dtype=np.float32, shape=shape)
 
     # for x in self.M:
     #   print(x.shape)
 
     self.Mhat = []
+    self.weights = []
+
     self.step_i = 0
     self.step_t = 0
     self.k = k_state_neighborhood
@@ -73,14 +81,25 @@ class SimpleCrossSectionEnv(gym.Env):
 
     # print('action, min, max, mean', min(action), max(action), np.mean(action))
     #action = min(max(action, self.min_action), self.max_action)
-    action = np.clip(action, self.min_action, self.max_action)
+
+    # expand for easier indexing if necessary
+    action = action.reshape(-1, 1)
 
     # print('step_i: {} \t step_t: {}'.format(self.step_i, self.step_t))
+    # print(action.shape)
+
     if self.step_i == len(self.M):
       # we are done. let's reconstruct the entire mesh and calculate the metrics as a reward
-      pts, tri_face, tetra_face, reward = utils.triangulate_list_and_reward(self.Mhat, self.sample_spacing)
+      pts, tri_face, tetra_face, reward = utils.triangulate_list_and_reward(self.Mhat, self.sample_spacing, weights=self.weights)
       print('final reward', reward)
       return np.array(self.state_neighborhood()), reward, True, {}
+
+    weights = action[self.longest*2:]
+    action = action[:self.longest*2]
+    
+    self.weights.append(weights)
+
+    action = np.clip(action, self.min_action, self.max_action)
 
 
     if type(action) != int:
@@ -92,9 +111,8 @@ class SimpleCrossSectionEnv(gym.Env):
     info = {}
 
 
-    # use a classical triangulation algorithm between the neighborhood of timesteps
-    # FIGURE THIS OUT
     to_reconstruct = []
+    to_reconstruct_weights = []
     # iterate from i to prev_mesh_neighborhood inclusive. in reverse order too
     for it in range(self.previous_mesh_neighborhood, -1 , -1):
       idx = self.step_t - it
@@ -102,32 +120,35 @@ class SimpleCrossSectionEnv(gym.Env):
         continue
       # print('mhat add', idx)
       to_reconstruct.append(self.Mhat[idx])
+      to_reconstruct_weights.append(self.weights[idx])
 
-    # iterate from i+1 to next_mesh_neighborhood inclusive
-    for it in range(1, self.next_mesh_neighborhood + 1):
-      idx = self.step_i + it
-      if idx > len(self.M)-1:
-        continue
-      # print('m add', idx)
-      to_reconstruct.append(self.M[idx])
+    # # iterate from i+1 to next_mesh_neighborhood inclusive
+    # for it in range(1, self.next_mesh_neighborhood + 1):
+    #   idx = self.step_i + it
+    #   if idx > len(self.M)-1:
+    #     continue
+    #   # print('m add', idx)
+    #   to_reconstruct.append(self.M[idx])
+    to_reconstruct = np.array(to_reconstruct)
+    to_reconstruct_weights = np.array(to_reconstruct_weights)
+
     self.to_recon = to_reconstruct
+    self.to_recon = to_reconstruct_weights
 
-    # for easy case, sample spacing can be consistent. for subsampling, we might need to employ some tricks.
+    # if it's 1, just return
+    if(len(to_reconstruct) == 1):
+      # for simple case, step_t follows the size of self.Mhat
+      self.step_t += 1
+      self.step_i += 1
+      # print('reward', reward)
+      return self.state_neighborhood(), 0, False, info
 
-    # pts, tri_face, tetra_face = utils.triangulate_list(to_reconstruct, self.sample_spacing)
-    # self.pts = pts
-    # self.tri_face = tri_face
-    # self.tetra_face = tetra_face
 
-    pts, tri_face, tetra_face, reward = utils.triangulate_list_and_reward(to_reconstruct, self.sample_spacing)
+
+    pts, tri_face, tetra_face, reward = utils.triangulate_list_and_reward(to_reconstruct, self.sample_spacing, weights=to_reconstruct_weights)
     self.pts = pts
     self.tri_face = tri_face
-    self.tetra_face = tetra_face
-
-    # calculate the reward of the triangulation
-
-    # reward = self.reward_function(['aspect_ratio'])
-
+    self.tetra_face = tetra_face # this is None because pyvista representation does treats everything as a triangle
 
 
     # done if at last time step
@@ -182,23 +203,23 @@ class SimpleCrossSectionEnv(gym.Env):
         os.makedirs('saved')
 
     if len(self.Mhat) != 0:
-        pts, tri_face, tetra_face, reward = utils.triangulate_list_and_reward(self.Mhat, self.sample_spacing)
-        img = self.draw(pts, tri_face)
+        pts, tri_face, tetra_face, reward = utils.triangulate_list_and_reward(self.Mhat, self.sample_spacing, weights=self.weights)
+        img = utils.draw(pts, tri_face, self.renderer)
         t = time.time()
         cv2.imwrite('{}_{}_{:.4f}.png'.format('saved/sphere', t, reward), img)
 
-        mesh = trimesh.Trimesh(vertices=pts, faces=tetra_face)
+        mesh = trimesh.Trimesh(vertices=pts, faces=tri_face)
         mesh.export(file_obj='{}_{}_{:.4f}.stl'.format('saved/sphere', t, reward))
 
 
-    else:
-        pts, tri_face, tetra_face, reward = utils.triangulate_list_and_reward(self.M, self.sample_spacing)
-        img = self.draw(pts, tri_face)
-        t = time.time()
-        cv2.imwrite('{}_{}_{:.4f}.png'.format('saved/sphere', t, reward), img)
+    # else:
+    #     pts, tri_face, tetra_face, reward = utils.triangulate_list_and_reward(self.M, self.sample_spacing)
+    #     img = utils.draw(pts, tri_face, self.renderer)
+    #     t = time.time()
+    #     cv2.imwrite('{}_{}_{:.4f}.png'.format('saved/sphere', t, reward), img)
 
-        mesh = trimesh.Trimesh(vertices=pts, faces=tetra_face)
-        mesh.export(file_obj='{}_{}_{:.4f}.stl'.format('saved/sphere', t, reward))
+    #     mesh = trimesh.Trimesh(vertices=pts, faces=tetra_face)
+    #     mesh.export(file_obj='{}_{}_{:.4f}.stl'.format('saved/sphere', t, reward))
 
 
 
@@ -232,9 +253,8 @@ class SimpleCrossSectionEnv(gym.Env):
     if self.pts is None:
       return
 
-    print('render')
 
-    img = self.draw(self.pts, self.tri_face)
+    img = utils.draw(self.pts, self.tri_face, self.renderer)
 
     if self.first_rendering:
       self.first_rendering = False
@@ -245,36 +265,10 @@ class SimpleCrossSectionEnv(gym.Env):
     if filename != None:
       # utils.save_3d_surface_wiremesh(self.pts, self.tri_face, '{}_{}.png'.format(filename, self.step_t))
       cv2.imwrite('{}_{}.png'.format(filename, self.step_t), img)
-    print('done1')
     plt.pause(.001)
 
-    print('done2')
 
-  def draw(self, pts, tri_face):
-    mesh = trimesh.Trimesh(pts, tri_face)
-    mesh = pyrender.Mesh.from_trimesh(mesh, smooth=False, wireframe=False)
 
-    scene = pyrender.Scene()
-    camera = pyrender.PerspectiveCamera( yfov=np.pi / 3.0)
-    light = pyrender.DirectionalLight(color=[1,1,1], intensity=2e3)
-
-    scene.add(mesh, pose=  np.eye(4))
-    scene.add(light, pose=  np.eye(4))
-
-    scene.add(camera, pose=[
-                            [ 0,  0,  1,  1],
-                            [ 1,  0,  0,  -.5],
-                            [ 0,  1,  0,  .5],
-                            [ 0,  0,  0,  1]
-                            ])
-    # scene.add(camera, pose=[
-    #                         [ 1,  0,  0,  1],
-    #                         [ 0,  1,  0,  0],
-    #                         [ 0,  0,  1,  2],
-    #                         [ 0,  0,  0,  1]
-    #                         ])
-    img, _ = self.renderer.render(scene)
-    return img
 
 
   def close(self):
@@ -285,20 +279,22 @@ class SimpleCrossSectionEnv(gym.Env):
     return reward
 
 
-#input_file = '/home1/07435/aanwar/cross_section_rl/data/cross_section_data/sphere_resampled.npz'
-#env = SimpleCrossSectionEnv(input_file, same_obs_size=True)
+# input_file = '/home/abrar/cross_section_rl/data/cross_section_data/sphere_resampled.npz'
+# env = SimpleCrossSectionEnv(input_file, same_obs_size=True)
 
-#print(env.observation_space)
-#env.reset()
+# # print(env.observation_space)
+# # env.reset()
 
-# for i in range(len(env.M)):
-#done = False
-#while not done:
-  #obs, reward, done, _ = env.step(0)
-  #print(obs.shape, reward, done)
+# # for i in range(len(env.M)):
+# done = False
+# i = 0
+# while not done:
+#   obs, reward, done, _ = env.step(np.random.rand(300,1))
+#   print(i, obs.shape, reward, done)
+#   i+=1
 #   env.render()
 
-
+# env.reset()
 # test1 = np.array([[1,2], [3,4], [5,6]])
 # test2 = np.array([[1,32], [3,64]])
 # triangulate_list([test1, test2], 1)
