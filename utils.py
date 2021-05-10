@@ -49,19 +49,18 @@ def WeightedDelaunay(points,weights):
 def pyvistaToTrimeshFaces(cells):
     faces = []
     idx = 0
-    # for i in range(nCells):
     while idx < len(cells):
       curr_cell_count = cells[idx]
-      curr_faces = cells[idx+1:idx+curr_cell_count]
+      curr_faces = cells[idx+1:idx+curr_cell_count+1]
       faces.append(curr_faces)
       idx += curr_cell_count+1
-
     return np.array(faces)
 
 
 # main difference here is it uses pyvista
 def triangulate_list_and_reward(subsequence, step, reward_type='scaled_jacobian', weights=None):
   # stack by heights
+  tetra_face = None
 
   pts = np.empty(shape = (0,3))
   wts = np.empty(shape = (0,1))
@@ -84,14 +83,11 @@ def triangulate_list_and_reward(subsequence, step, reward_type='scaled_jacobian'
 
   if(weights is not None):
     tetra_face = np.array(WeightedDelaunay(pts, weights))
-
     # make it compatible with pyvista
     fours = np.ones(len(tetra_face))*4
     tetra_face = np.insert(tetra_face, 0, fours, axis=1)
     mesh = pv.PolyData(pts, tetra_face)
-
-    # pyvista's internal representation is int riangles
-    tri_face =  pyvistaToTrimeshFaces(np.array(mesh.faces))
+    tetra_face =  pyvistaToTrimeshFaces(np.array(mesh.faces))
 
   else: 
     poly = pv.PolyData(pts)
@@ -107,11 +103,11 @@ def triangulate_list_and_reward(subsequence, step, reward_type='scaled_jacobian'
     else: 
       cells = np.array(mesh.cells)
       
-    tri_face = pyvistaToTrimeshFaces(cells)
+    tetra_face = pyvistaToTrimeshFaces(cells)
 
 
-  # tri_face = np.array(list(get_surface_tris_from_tet(tetra_face)))
-  tetra_face = None
+  tri_face = np.array(list(get_surface_tris_from_tet(tetra_face)))
+  # tetra_face = None
 
   # REWARD. Need the mesh to be in a triangulated PolyData
   if reward_type == 'scaled_jacobian':
@@ -121,12 +117,21 @@ def triangulate_list_and_reward(subsequence, step, reward_type='scaled_jacobian'
   quality = np.array(qual.cell_arrays['CellQuality'])
 
   # qual.plot()
-
   
   # exit()
   return pts, tri_face, tetra_face, np.mean(quality)*100
 
-  
+
+def pyvista_to_reward(pts, tet_face, reward_type='scaled_jacobian'):
+  tets = np.ones(len(tet_face))*4
+  tet_face = np.insert(tet_face, 0, tets, axis=1)
+  mesh = pv.PolyData(pts, tet_face)
+
+  if reward_type == 'scaled_jacobian':
+    qual = mesh.compute_cell_quality(quality_measure=reward_type)
+    
+  quality = np.array(qual.cell_arrays['CellQuality'])
+  return np.mean(quality)*100
 
 def delaunay_triangulation(pts):
   tris = Delaunay(pts)
