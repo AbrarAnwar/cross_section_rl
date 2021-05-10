@@ -59,7 +59,7 @@ if __name__ == '__main__':
     example_fname = os.path.join('data/shape_data', 'sphere.ply')
     mesh = trimesh.load_mesh(example_fname)
 
-    num_sections = 50
+    num_sections = 25
     verts = mesh.vertices
 
     max_v = np.max(verts[:,1])
