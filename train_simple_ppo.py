@@ -173,6 +173,10 @@ def main():
         from envs.simple_cross_section_env import SimpleCrossSectionEnv
     elif args.env_type == "weights":
         from envs.simple_cross_section_env_weighted import SimpleCrossSectionEnv
+    elif args.env_type == "local":
+        from envs.simple_cross_section_env_local import SimpleCrossSectionEnv
+    elif args.env_type == "weights_local":
+        from envs.simple_cross_section_env_weighted_local import SimpleCrossSectionEnv
     else: 
         sys.exit('Please use a proper env_type argument. ')
 
