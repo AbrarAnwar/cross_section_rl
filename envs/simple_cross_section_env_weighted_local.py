@@ -30,6 +30,7 @@ class SimpleCrossSectionEnv(gym.Env):
     data = np.load(input_file, allow_pickle=True)
     self.M = data['cross_sections']
     self.sample_spacing = data['step']
+    self.spacing_multiplier = 10
 
     self.same_obs_size = same_obs_size
 
@@ -141,7 +142,7 @@ class SimpleCrossSectionEnv(gym.Env):
 
     # triangulate only the previous and current steps
 
-    pts, tri_face, tetra_face, reward = utils.triangulate_list_and_reward(to_reconstruct, self.sample_spacing, weights=to_reconstruct_weights)
+    pts, tri_face, tetra_face, reward = utils.triangulate_list_and_reward(to_reconstruct, self.sample_spacing*self.spacing_multiplier, weights=to_reconstruct_weights)
     self.pts = pts
     self.tri_face = tri_face
     self.tetra_face = tetra_face # this is None because pyvista representation does treats everything as a triangle
