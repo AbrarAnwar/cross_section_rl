@@ -31,10 +31,11 @@ class SimpleCrossSectionEnv(gym.Env):
     data = np.load(input_file, allow_pickle=True)
     self.M = data['cross_sections']
     self.sample_spacing = data['step']
-    self.spacing_multiplier = 10
+    self.spacing_multiplier = 2
+    self.folder_name = time.time()
 
-    for x in self.M:
-      x += np.random.normal(size=(x.shape), loc=0, scale=(.05))
+    # for x in self.M:
+    #   x += np.random.normal(size=(x.shape), loc=0, scale=(.05))
 
     self.same_obs_size = same_obs_size
 
@@ -150,7 +151,7 @@ class SimpleCrossSectionEnv(gym.Env):
     done = False
     if self.step_i == len(self.M)-1:
       done = True
-      
+
       # do i want the final reward to be based on the entire thing?
       pts = np.empty(shape = (0,3))
       for i, m in enumerate(self.Mhat):
@@ -211,6 +212,9 @@ class SimpleCrossSectionEnv(gym.Env):
     if not os.path.exists('saved'):
       os.makedirs('saved')
 
+    if not os.path.exists('saved/local_{}'.format(self.folder_name)):
+      os.makedirs('saved/local_{}'.format(self.folder_name))
+
     if len(self.Mhat) != 0:
       # local changes
 
@@ -229,20 +233,20 @@ class SimpleCrossSectionEnv(gym.Env):
       img = utils.draw(pts, tetra_face, self.renderer)
 
       t = time.time()
-      cv2.imwrite('{}_{}_{:.4f}.png'.format('saved/sphere', t, reward), img)
+      cv2.imwrite('saved/local_{}/sphere_{}_{:.4f}.png'.format(self.folder_name, t, reward), img)
 
       mesh = trimesh.Trimesh(vertices=pts, faces=tetra_face)
-      mesh.export(file_obj='{}_{}_{:.4f}.stl'.format('saved/sphere', t, reward))
+      mesh.export(file_obj='saved/local_{}/sphere_{}_{:.4f}.stl'.format(self.folder_name, t, reward))
 
 
     else:
-        pts, tri_face, tetra_face, reward = utils.triangulate_list_and_reward(self.M, self.sample_spacing)
-        img = utils.draw(pts, tetra_face, self.renderer)
-        t = time.time()
-        cv2.imwrite('{}_{}_{:.4f}.png'.format('saved/sphere_no_weights_local_', t, reward), img)
+      pts, tri_face, tetra_face, reward = utils.triangulate_list_and_reward(self.M, self.sample_spacing)
+      img = utils.draw(pts, tetra_face, self.renderer)
+      t = time.time()
+      cv2.imwrite('saved/local_{}/sphere_no_weights_no_local{}_{:.4f}.png'.format(self.folder_name, t, reward), img)
 
-        mesh = trimesh.Trimesh(vertices=pts, faces=tetra_face)
-        mesh.export(file_obj='{}_{}_{:.4f}.stl'.format('saved/sphere_no_weights_local_', t, reward))
+      mesh = trimesh.Trimesh(vertices=pts, faces=tetra_face)
+      mesh.export(file_obj='saved/local_{}/sphere_no_weights_no_local{}_{:.4f}.stl'.format(self.folder_name, t, reward))
 
 
 
@@ -255,8 +259,8 @@ class SimpleCrossSectionEnv(gym.Env):
     data = np.load(self.input_file, allow_pickle=True)
     self.M = data['cross_sections']
 
-    for x in self.M:
-      x += np.random.normal(size=(x.shape), loc=0, scale=(.05))
+    # for x in self.M:
+    #   x += np.random.normal(size=(x.shape), loc=0, scale=(.05))
 
     neighborhood = []
     if self.same_obs_size:

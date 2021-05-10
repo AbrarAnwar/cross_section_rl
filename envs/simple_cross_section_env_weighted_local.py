@@ -31,6 +31,7 @@ class SimpleCrossSectionEnv(gym.Env):
     self.M = data['cross_sections']
     self.sample_spacing = data['step']
     self.spacing_multiplier = 10
+    self.folder_name = time.time()
 
     self.same_obs_size = same_obs_size
 
@@ -218,6 +219,9 @@ class SimpleCrossSectionEnv(gym.Env):
     if not os.path.exists('saved'):
       os.makedirs('saved')
 
+    if not os.path.exists('saved/weights_local_{}'.format(self.folder_name)):
+      os.makedirs('saved/weights_local_{}'.format(self.folder_name))
+
     if len(self.Mhat) != 0:
       # old way. we want the local changes
       # pts, tri_face, tetra_face, reward = utils.triangulate_list_and_reward(self.Mhat, self.sample_spacing, weights=self.weights)
@@ -239,20 +243,20 @@ class SimpleCrossSectionEnv(gym.Env):
       img = utils.draw(pts, tetra_face, self.renderer)
 
       t = time.time()
-      cv2.imwrite('{}_{}_{:.4f}.png'.format('saved/sphere', t, reward), img)
+      cv2.imwrite('saved/weights_local_{}/sphere_{}_{:.4f}.png'.format(self.folder_name, t, reward), img)
 
       mesh = trimesh.Trimesh(vertices=pts, faces=tetra_face)
-      mesh.export(file_obj='{}_{}_{:.4f}.stl'.format('saved/sphere', t, reward))
+      mesh.export(file_obj='saved/weights_local_{}/sphere_{}_{:.4f}.stl'.format(self.folder_name, t, reward))
 
 
     else:
         pts, tri_face, tetra_face, reward = utils.triangulate_list_and_reward(self.M, self.sample_spacing)
         img = utils.draw(pts, tetra_face, self.renderer)
         t = time.time()
-        cv2.imwrite('{}_{}_{:.4f}.png'.format('saved/sphere_no_weights_local_', t, reward), img)
+      cv2.imwrite('saved/weights_local_{}/sphere_no_weights_no_local{}_{:.4f}.png'.format(self.folder_name, t, reward), img)
 
         mesh = trimesh.Trimesh(vertices=pts, faces=tetra_face)
-        mesh.export(file_obj='{}_{}_{:.4f}.stl'.format('saved/sphere_no_weights_local_', t, reward))
+      mesh.export(file_obj='saved/weights_local_{}/sphere_no_weights_no_local{}_{:.4f}.stl'.format(self.folder_name, t, reward))
 
 
 
