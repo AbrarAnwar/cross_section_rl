@@ -23,7 +23,9 @@ from pfrl.wrappers import atari_wrappers
 from models.point_net_ae import *
 
 import os
-os.environ['PYOPENGL_PLATFORM'] = 'egl'
+# os.environ['PYOPENGL_PLATFORM'] = 'egl'
+os.environ['PYOPENGL_PLATFORM'] = 'osmesa'
+
 
 def main():
     parser = argparse.ArgumentParser()

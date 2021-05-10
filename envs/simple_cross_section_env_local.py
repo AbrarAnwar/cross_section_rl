@@ -150,6 +150,22 @@ class SimpleCrossSectionEnv(gym.Env):
     done = False
     if self.step_i == len(self.M)-1:
       done = True
+      
+      # do i want the final reward to be based on the entire thing?
+      pts = np.empty(shape = (0,3))
+      for i, m in enumerate(self.Mhat):
+        col_to_add = np.ones(len(m))*i*self.sample_spacing
+        res = np.hstack([m, np.atleast_2d(col_to_add).T])
+        pts = np.concatenate([pts, res])
+
+      tetra_face = np.empty(shape = (0,4), dtype=np.int64)
+      for i, m in enumerate(self.local_faces):
+        tetra_face = np.concatenate([tetra_face, m])
+      total_reward = utils.pyvista_to_reward(pts, tetra_face)
+
+
+      return self.state_neighborhood(), total_reward, done, info
+
       return self.state_neighborhood(), reward, done, info
 
     # for simple case, step_t follows the size of self.Mhat
@@ -296,7 +312,9 @@ class SimpleCrossSectionEnv(gym.Env):
     plt.pause(.001)
 
 
-
+  def calculate_M_reward(self):
+    pts, tri_face, tetra_face, reward = utils.triangulate_list_and_reward(self.M, self.sample_spacing)
+    return reward
 
 
   def close(self):

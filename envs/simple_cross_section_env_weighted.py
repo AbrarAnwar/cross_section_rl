@@ -275,6 +275,9 @@ class SimpleCrossSectionEnv(gym.Env):
   def close(self):
     return
   
+  def calculate_M_reward(self):
+    pts, tri_face, tetra_face, reward = utils.triangulate_list_and_reward(self.M, self.sample_spacing)
+    return reward
 
 
 # input_file = '/home/abrar/cross_section_rl/data/cross_section_data/sphere_resampled.npz'

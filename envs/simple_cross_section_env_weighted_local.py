@@ -316,7 +316,9 @@ class SimpleCrossSectionEnv(gym.Env):
 
 
 
-
+  def calculate_M_reward(self):
+    pts, tri_face, tetra_face, reward = utils.triangulate_list_and_reward(self.M, self.sample_spacing)
+    return reward
 
   def close(self):
     return
