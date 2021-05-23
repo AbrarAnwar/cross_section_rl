@@ -46,9 +46,8 @@ class SimpleCrossSectionEnv(gym.Env):
     self.folder_name = str(time.time()) + "_" + reward_type
 
     self._max_episode_steps = len(self.M) + 1
+
     # add noise
-    # for x in self.M:
-    #   x += np.random.normal(size=(x.shape), loc=0, scale=(self.noise))
     noise_scale = self.noise
     for x in self.M:
         n = np.random.normal(loc=0, scale=x[:,0].std(), size=x[:,0].shape) * noise_scale
@@ -69,9 +68,9 @@ class SimpleCrossSectionEnv(gym.Env):
 
     self.episode_number = 0
 
-    
-    self.min_action = -.05
-    self.max_action = .05
+    # bounds of the action
+    self.min_action = -.1
+    self.max_action = .1
 
     #self.action_space = spaces.Box(low=-np.inf, high=np.inf, dtype=np.float32, shape=shape)
 
@@ -117,13 +116,10 @@ class SimpleCrossSectionEnv(gym.Env):
   def step(self, action):
 
 
-    #action = min(max(action, self.min_action), self.max_action)
-
     # expand for easier indexing if necessary
     action = action.reshape(-1, 1)
 
     # print('step_i: {} \t step_t: {}'.format(self.step_i, self.step_t))
-
 
     weights = action[self.longest*2:]
     action = action[:self.longest*2] 
@@ -133,7 +129,6 @@ class SimpleCrossSectionEnv(gym.Env):
 
     # apply weights' displacement
     self.weights[self.step_i] + weights
-
 
 
     if type(action) != int:
@@ -150,12 +145,11 @@ class SimpleCrossSectionEnv(gym.Env):
     to_reconstruct_weights = []
     # iterate from i to prev_mesh_neighborhood inclusive. in reverse order too
     for it in range(1, -1 , -1):
-      idx = self.step_t - it
+      idx = self.step_i - it
       if idx < 0:
         continue
       to_reconstruct.append(self.Mhat[idx])
       to_reconstruct_weights.append(self.weights[idx])
-
 
     to_reconstruct = np.array(to_reconstruct)
     to_reconstruct_weights = np.array(to_reconstruct_weights)
@@ -170,7 +164,6 @@ class SimpleCrossSectionEnv(gym.Env):
       return self.state_neighborhood(), 0, False, info
 
     # triangulate only the previous and current steps
-
     pts, tri_face, tetra_face, reward = utils.triangulate_list_and_reward(to_reconstruct, self.sample_spacing*self.spacing_multiplier, weights=to_reconstruct_weights, reward_type=self.reward_type, twodWDT=False)
     # for rendering
     self.pts = pts
@@ -178,16 +171,16 @@ class SimpleCrossSectionEnv(gym.Env):
     self.tetra_face = tetra_face 
 
     # store the faces that we get. These faces are only between two cross-sections, so they are going to be between 0 and 200
-    shifted_faces = tri_face + (self.step_t - 1)*self.num_points # this 100 is the number of points!!!
+    shifted_faces = tri_face + (self.step_i - 1)*self.num_points # this 100 is the number of points!!!
 
-    self.local_faces[self.step_t - 1] = shifted_faces
+    self.local_faces[self.step_i - 1] = shifted_faces
 
 
     # done if at last time step
     done = False
     if self.step_i == len(self.M) - 1:
       done = True
-
+      # NOTE: this is for if we want to have the last step have a higher reward
       # do i want the final reward to be based on the entire thing?
       # pts = np.empty(shape = (0,3))
       # for i, m in enumerate(self.Mhat):
@@ -203,7 +196,8 @@ class SimpleCrossSectionEnv(gym.Env):
       # Massive negative reward if we didn't succeed. Expected future reward should be lower
       # if total_reward < 0:
       #     total_reward = -100
-      # from instability of HOT metric sometimes
+
+      # from instability of HOT metric we clip the reward
       reward = np.clip(reward, -100, 100)
       return self.state_neighborhood(), reward, done, info
 
@@ -220,7 +214,7 @@ class SimpleCrossSectionEnv(gym.Env):
   def state_neighborhood(self):
     neighborhood = []
     for it in range(self.k, 0 , -1):
-      idx = self.step_t - it 
+      idx = self.step_i - it 
       if idx < 0: # to ensure equal sizes, we will just add the first one
         if self.same_obs_size:
           neighborhood.append(self.Mhat[0])
@@ -231,7 +225,6 @@ class SimpleCrossSectionEnv(gym.Env):
         neighborhood.append(self.Mhat[idx])
       # print('mhat add', idx)
       
-
     # iterate from i+1 to next_mesh_neighborhood inclusive
     for it in range(0, self.k + 1):
       idx = self.step_i + it
@@ -245,12 +238,11 @@ class SimpleCrossSectionEnv(gym.Env):
         neighborhood.append(self.M[idx])
       # print('m add', idx)
 
-
     # local faces
     # now i want a window of the same size for this
     windowed_faces = []
     for it in range(-self.k, self.k, 1):
-      idx = self.step_t + it
+      idx = self.step_i + it
       if idx < 0: # to ensure equal sizes, we will just add the first one
         continue
       if idx > len(self.local_faces)-1:
@@ -260,12 +252,13 @@ class SimpleCrossSectionEnv(gym.Env):
         windowed_faces.extend(faces)
       # print('local faces intersection add', idx)
     
-    idx = self.step_t - self.k
+    idx = self.step_i - self.k
     if idx < 0: # to ensure equal sizes, we will just add the first one
       idx = 0
     if idx > len(self.local_faces)-1:
       idx = len(self.local_faces) - 1
 
+    # get the indices of the window to be correct by shifting it
     windowed_faces = np.array(windowed_faces)  - idx*self.num_points
 
     # now turn these into undirected edges
@@ -274,29 +267,8 @@ class SimpleCrossSectionEnv(gym.Env):
     swapped_edges[:, [1, 0]] = edges[:, [0, 1]]
     edges = np.concatenate([edges, swapped_edges])
 
-    # now get the vertex edge counts of the space-time surface st_{t-1}
-    # vd1, vd2 = self.get_vertex_degrees(self.local_faces, self.step_i)
-
     state = (np.array(neighborhood), edges)
     return state
-
-  def get_vertex_degrees(self, local_faces, step_i):
-    unique, counts = np.unique(local_faces[step_i - 1], return_counts=True)
-    vertex_count_dict = dict(zip(unique, counts))
-    v_c_1 = []
-    v_c_2 = []
-    for i in range(self.num_points):
-      count = vertex_count_dict.get(i + step_i*self.num_points, 0)
-      # if count == 0:
-      #   print('no edges for this vertex')
-      v_c_1.append(count)
-    
-    for i in range(self.num_points):
-      count = vertex_count_dict.get(i+step_i*self.num_points, 0)
-      # if count == 0:
-      #   print('no edges for this vertex')
-      v_c_2.append(count)
-    return  np.array(v_c_1), np.array(v_c_2)
 
   def reset(self, is_eval=False):
     # open file to record results:
@@ -313,9 +285,8 @@ class SimpleCrossSectionEnv(gym.Env):
 
     qualities_file = open('saved/weights_local_{}/{}_qualities.txt'.format(self.folder_name, self.file_name), "a+")
 
-
+    # if it's not the first time, we aggreate results
     if len(self.Mhat) != 0:
-
       pts = np.empty(shape = (0,3))
       for i, m in enumerate(self.Mhat):
         col_to_add = np.ones(len(m))*i*self.sample_spacing
@@ -355,6 +326,7 @@ class SimpleCrossSectionEnv(gym.Env):
       else:
        qualities_file.write("Episode {} ".format(self.episode_number) + str(rewards_dict) + '\n')
 
+    # otherwise, if we haven't refined anything yet, output what it looks like
     else:
 
       pts, tri_face, tetra_face, reward = utils.triangulate_list_and_reward(self.M, self.sample_spacing, weights=self.weights, reward_type=self.reward_type)
@@ -379,7 +351,7 @@ class SimpleCrossSectionEnv(gym.Env):
 
     qualities_file.close()
 
-
+    # properly reset now
     self.episode_number += 1
 
 
@@ -399,19 +371,19 @@ class SimpleCrossSectionEnv(gym.Env):
     self.M = data['cross_sections']
     self.sample_spacing = data['step']
     self.file_name = self.input_files[f_idx].split(os.sep)[-1][:-4]
-
-    # for x in self.M:
-    #   x += np.random.normal(size=(x.shape), loc=0, scale=(self.noise))
+    # add noise
     noise_scale = self.noise
     for x in self.M:
         n = np.random.normal(loc=0, scale=x[:,0].std(), size=x[:,0].shape) * noise_scale
         x[:,0] += n
         n = np.random.normal(loc=0, scale=x[:,1].std(), size=x[:,1].shape) * noise_scale
         x[:,1] += n
-        neighborhood = []
-        if self.same_obs_size:
-          for it in range(self.k, -1 , -1):
-            neighborhood.append(self.M[0])
+
+
+    neighborhood = []
+    if self.same_obs_size:
+      for it in range(self.k, -1 , -1):
+        neighborhood.append(self.M[0])
       
 
     # iterate from i+1 to next_mesh_neighborhood inclusive
@@ -428,11 +400,9 @@ class SimpleCrossSectionEnv(gym.Env):
 
     self.local_faces = self.fill_local_faces(self.M, self.sample_spacing, self.spacing_multiplier)
 
-    # vd1, vd2 = self.get_vertex_degrees(self.local_faces, self.step_i)
-
     windowed_faces = []
     for it in range(-self.k, self.k, 1):
-      idx = self.step_t + it
+      idx = self.step_i + it
       if idx < 0: # to ensure equal sizes, we will just add the first one
         continue
       if idx > len(self.local_faces)-1:
@@ -441,7 +411,7 @@ class SimpleCrossSectionEnv(gym.Env):
         faces = self.local_faces[idx]
         windowed_faces.extend(faces)
     
-    idx = self.step_t - self.k - 1
+    idx = self.step_i - self.k - 1
     if idx < 0: # to ensure equal sizes, we will just add the first one
       idx = 0
     if idx > len(self.local_faces)-1:
@@ -457,11 +427,12 @@ class SimpleCrossSectionEnv(gym.Env):
     edges = np.concatenate([edges, swapped_edges])
 
 
-
+    # we know the size of k, so we just do this here. TODO: Make more general
     return np.array([self.M[0], self.M[1], self.M[2]]), edges
     # return np.array(neighborhood), edges
 
 
+  # fills a list of faces for a neighborhood of cross-sections
   def fill_local_faces(self, M, sample_spacing, spacing_multiplier):
   
     local_faces = []

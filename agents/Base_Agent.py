@@ -36,19 +36,10 @@ class Base_Agent(object):
 
         self.device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
-        # autoencoder = PCAutoEncoder(3, self.state_size, 256)
-        # state_dict = torch.load('/home/abrar/cross_section_rl/saved_models/list_model/save_1999.pth', map_location=self.device)
-        # autoencoder.load_state_dict(state_dict)
-        
 
-        # self.autoencoder = autoencoder.to(self.device)
-
-        self.state_size = 256
+        self.state_size = 256 
 
         self.edgeEncoder = SpaceTimeElementEncoder(3, self.state_size, hidden=128).to(self.device)
-
-        # self.autoencoder = autoencoder.eval()
-        # self.ae_optimizer = torch.optim.Adam(self.autoencoder.parameters(), lr=0.0001, betas=(0.9, 0.999))
 
 
         # self.state_size = 256 + self.environment.num_points*2
@@ -64,9 +55,6 @@ class Base_Agent(object):
         self.config.action_size = self.action_size
 
         self.lowest_possible_episode_score = self.get_lowest_possible_episode_score()
-
-
-
 
 
         self.hyperparameters = config.hyperparameters
@@ -86,6 +74,7 @@ class Base_Agent(object):
         gym.logger.set_level(40)  # stops it from printing an unnecessary warning
         self.log_game_info()
 
+    # this function provides preprocessing of the state, which is output by the state_neighborhood() function
     def phi(self, x, train):
         # print("IN PHI")
         # this comes in a list of batches. 
@@ -93,6 +82,7 @@ class Base_Agent(object):
 
         data_list = []
 
+        # stack into points and organize into a nice list of Data variables
         all_pts = []
         for vals in x_list:
             pts = np.empty(shape = (0,3))
@@ -115,73 +105,10 @@ class Base_Agent(object):
             # self.autoencoder.eval()
             self.edgeEncoder.eval()
 
-        # global_feat = None
-        # pts = torch.tensor(pts)
-        # # pts = pts.unsqueeze(0)
-        # pts = pts.transpose(2, 1).float().to(self.device)
-        # # now feed these into pointnet
-        # reconstructed_points, global_feat = self.autoencoder(pts)
-        # dist1, dist2 = chamfer_dist(pts, reconstructed_points)  
-
-
         # calculate graph shit
         graphFeat = self.edgeEncoder(batch, train)
 
         return graphFeat
-        # return graphFeat
-        # # exit()
-        # # feat = global_feat.squeeze()
-        # global_feat = global_feat
-        # feat = global_feat
-        # feat = torch.cat([feat, v_d_1, v_d_2], dim=1)
-        # # print('feature shape', feat.shape)
-        # feat = feat.squeeze()
-
-        # return feat
-
-        # self.ae_optimizer.zero_grad()
-        # if(len(self.phi_buffer) > 1000):
-        #     self.phi_buffer.pop(random.randrange(len(self.phi_buffer)))
-        # self.phi_buffer.append(pts)
-
-        # if not len(self.phi_buffer) <= 4:
-        #     training = random.sample(self.phi_buffer, 3)
-        # else:
-        #     training = self.phi_buffer
-
-        # training.append(pts)
-
-        # # self.autoencoder.train()
-        # training = np.stack(training)
-        # train_points = torch.tensor(training).to(self.device).float()
-        # train_points = train_points.transpose(2, 1)
-
-        # reconstructed_points, global_feat = self.autoencoder(train_points)
-
-        # dist1, dist2 = chamfer_dist(train_points, reconstructed_points)   # calculate loss
-        # ae_train_loss = (torch.mean(dist1)) + (torch.mean(dist2))
-        # ae_train_loss.backward()
-        # self.ae_optimizer.step()
-
-        # self.autoencoder.eval()
-
-        # global_feat = None
-        # # with torch.no_grad(): 
-        # pts = torch.tensor(pts)
-        # pts = pts.unsqueeze(0)
-        # pts = pts.transpose(2, 1).float().to(self.device)
-        # # now feed these into pointnet
-        # reconstructed_points, global_feat = self.autoencoder(pts)
-        # dist1, dist2 = chamfer_dist(pts, reconstructed_points)   # calculate loss
-        # self.ae_count +=1
-
-        # feat = global_feat.squeeze().cpu().detach().numpy()
-        # feat = np.append(feat, v_d_1)
-        # feat = np.append(feat, v_d_2)
-
-        # exit()
-        # return feat
-
 
 
     def step(self):

@@ -11,6 +11,7 @@ LOG_SIG_MAX = 2
 LOG_SIG_MIN = -20
 TRAINING_EPISODES_PER_EVAL_EPISODE = 10
 EPSILON = 1e-6
+NUM_PRE_EXPERIENCES = 500
 
 class SAC(Base_Agent):
     """Soft Actor-Critic model based on the 2018 paper https://arxiv.org/abs/1812.05905 and on this github implementation
@@ -40,7 +41,8 @@ class SAC(Base_Agent):
                                     self.config.seed)
 
 
-        pre_experiences = self.environment.pre_initialize_experiences(num_times=500)
+        # add the pre-initialized experiences
+        pre_experiences = self.environment.pre_initialize_experiences(num_times=NUM_PRE_EXPERIENCES)
         print('pre-experiences', len(pre_experiences))
         for exp in pre_experiences:
             state, action, reward, next_state, done = exp
