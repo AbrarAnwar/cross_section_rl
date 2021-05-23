@@ -163,6 +163,7 @@ def main():
     print(obs.shape)
     num_points = obs.shape[0] * obs.shape[1]
     print(num_points)
+    print("NUM POINTS", num_points)
     print('action space', action_space)
     print('obs size', obs_size)
 
@@ -181,10 +182,10 @@ def main():
     ou_sigma = (action_space.high - action_space.low) * 0.2
     explorer = explorers.AdditiveOU(sigma=ou_sigma)
 
-    if args.noisy_net_sigma is not None:
-        pnn.to_factorized_noisy(q_func, sigma_scale=args.noisy_net_sigma)
-        # Turn off explorer
-        explorer = explorers.Greedy()
+    # if args.noisy_net_sigma is not None:
+    #     pnn.to_factorized_noisy(q_func, sigma_scale=args.noisy_net_sigma)
+    #     # Turn off explorer
+    explorer = explorers.Greedy()
 
     opt = optim.Adam(q_func.parameters())
 

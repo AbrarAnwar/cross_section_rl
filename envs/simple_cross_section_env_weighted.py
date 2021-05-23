@@ -49,7 +49,7 @@ class SimpleCrossSectionEnv(gym.Env):
     weight_clip = np.ones(shape=longest)
 
     
-    self.action_space = spaces.Box(low=np.concatenate([default*self.min_action, weight_clip]), high=np.concatenate([default*self.max_action, weight_clip]), dtype=np.float32, shape=(longest*3,))
+    self.action_space = spaces.Box(low=np.concatenate([default*self.min_action, -weight_clip]), high=np.concatenate([default*self.max_action, weight_clip]), dtype=np.float32, shape=(longest*3,))
     self.observation_space = spaces.Box(low=-np.inf, high=np.inf, dtype=np.float32, shape=shape)
 
     # for x in self.M:

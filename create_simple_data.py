@@ -29,17 +29,6 @@ def simplify_spline(path, smooth=None, verbose=False):
     scale = path.scale
 
     for discrete in path.discrete:
-        # circle = is_circle(
-        #     discrete, scale=scale, verbose=verbose)
-        # if circle is not None:
-        #     # the points are circular enough for our high standards
-        #     # so replace them with a closed Arc entity
-        #     new_entities.append(entities.Arc(
-        #         points=np.arange(3) + len(new_vertices),
-        #         closed=True))
-        #     new_vertices.extend(circle)
-        #     continue
-
         # entities for this path
         entity, vertices = trimesh.path.simplify.points_to_spline_entity(discrete, smooth=smooth)
         # reindex returned control points
@@ -56,10 +45,16 @@ def simplify_spline(path, smooth=None, verbose=False):
 
 if __name__ == '__main__':
 
-    example_fname = os.path.join('data/shape_data', 'sphere.ply')
+    # file_name = 'Twisted_Vase_Basic.stl'
+    file_name = 'sphere.ply'
+    # file_name = '12_sided_pyramid_short.stl'
+
+    example_fname = os.path.join('data/shape_data', file_name)
     mesh = trimesh.load_mesh(example_fname)
 
-    num_sections = 25
+    num_sections = 10
+    num_verts = 10
+
     verts = mesh.vertices
 
     max_v = np.max(verts[:,1])
@@ -68,29 +63,36 @@ if __name__ == '__main__':
     # normalize between 0 and 1
     mesh.vertices = (mesh.vertices-min_v)/(max_v-min_v)
 
+
     verts = mesh.vertices
 
+
+
     # get new mesh vertices
-    max_v = np.max(verts[:,1]) - .05
-    min_v = np.min(verts[:,1]) + .05
+    max_v = np.max(verts[:,2]) - 0.05
+    min_v = np.min(verts[:,2]) + 0.05
+
+
 
     z_levels, step_size = np.linspace(min_v, max_v, num=num_sections, retstep=True)
-    z_extents = mesh.bounds[:,2]
 
 
     sections = mesh.section_multiplane(plane_origin=(0,0,0), 
-                                   plane_normal=[0,1,0], 
+                                   plane_normal=[0,0,1], 
                                    heights=z_levels)
 
 
-    # for x in sections:
-    #     x = x.vertices
-    #     plt.scatter(x[:,0], x[:,1])
-    # plt.show()
+    print(sections)
+    for x in sections:
+      # if x == None:
+      #   continue
+      x = x.vertices
+      plt.scatter(x[:,0], x[:,1])
+    plt.show()
     simplified = []
     for x in sections:
         # x = x.simplify_spline(smooth=.0001)
-        x = simplify_spline(x,smooth=.001)
+        x = simplify_spline(x,smooth=.01)
         simplified.append(x)
     sections = simplified
 
@@ -98,8 +100,9 @@ if __name__ == '__main__':
     for x in sections:
         # x.plot_entities()
         # print(x.entities[0].points.shape, x.entities[0].points)
-        # print(x.entities)
-        test = np.array(x.entities[0].discrete(x.vertices, count=100))
+        print(x.entities)
+        test = np.array(x.entities[0].discrete(x.vertices, count=num_verts + 1))
+        test = test[:-1]
         cross_sections.append(test)
         # print(x.vertices.shape, test.shape)
         # plt.plot(*test.T)
@@ -124,8 +127,9 @@ if __name__ == '__main__':
         plt.scatter(x[:,0], x[:,1])
         # break
     plt.show()
-
-    out_file = os.path.join(os.path.realpath('.'), 'data/cross_section_data', 'sphere_resampled')
+    name = file_name[:-4]
+    out_file = os.path.join(os.path.realpath('.'), 'data/cross_section_data', '{}_{}verts_{}sections'.format(name, num_verts, num_sections))
+    print(cross_sections)
     np.savez(out_file, cross_sections=cross_sections, step=step_size, start=min_v, end=max_v)
-
+    print('saved')
 

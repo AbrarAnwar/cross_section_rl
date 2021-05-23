@@ -23,24 +23,35 @@ else:
 
 # get cross sections, stack them as points, then reconstruct them in an auto-encoder setup. The middle spot is the latent space
 def main():
-    input_file = os.path.join(parentdir, 'data/cross_section_data/sphere_resampled.npz')
-    data = np.load(input_file, allow_pickle=True)
-    M = data['cross_sections']
-    sample_spacing = data['step']
+
+    fs = ['/home/abrar/cross_section_rl/data/cross_section_data/sphere_resampled_10verts_10sections.npz']
+    fs.append('/home/abrar/cross_section_rl/data/cross_section_data/12_sided_pyramid_short_10verts_10sections.npz')
+    fs.append('/home/abrar/cross_section_rl/data/cross_section_data/Twisted_Vase_Basic_10verts_10sections.npz')
+
+    Ms = []
+    steps = []
+    for f in fs:
+      data = np.load(f, allow_pickle=True)
+      Ms.append(data['cross_sections'])
+      steps.append(data['step'])
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-
-    autoencoder = PCAutoEncoder(3, len(state_neighborhood(M, 1, sample_spacing)))
+    print(len(state_neighborhood(Ms[0], 1, steps[0])))
+    autoencoder = PCAutoEncoder(3, len(state_neighborhood(Ms[0], 1, steps[0])), 256)
     autoencoder.to(device)
 
     states = []
-    for i in range(len(M)):
-        s = state_neighborhood(M, i, sample_spacing)
-        states.append(s)
+    for spacing_idx, M in enumerate(Ms):
+      for i in range(len(M)):
+          s = state_neighborhood(M, i, steps[spacing_idx])
+          states.append(s)
     print(len(states))
-    train(autoencoder, states, sample_spacing, epochs=1000, save=True, name='sphere')
+    print(states[0].shape)
 
-def state_neighborhood(M, step_i, sample_spacing, k=5, same_obs_size=True):
+
+    train(autoencoder, states, steps[0], epochs=2000, save=True, name='list_model')
+
+def state_neighborhood(M, step_i, sample_spacing, k=2, same_obs_size=True):
     neighborhood = []
     
     for it in range(k, -1 , -1):
@@ -119,7 +130,7 @@ def train(model, states, sample_spacing, epochs=15, save=True, name='train'):
             dist1, dist2 = chamfer_dist(points, reconstructed_points)   # calculate loss
             train_loss = (torch.mean(dist1)) + (torch.mean(dist2))
 
-            # print(f"Epoch: {epoch}, Iteration#: {i}, Train Loss: {train_loss}")
+            print(f"Epoch: {epoch}, Iteration#: {i}, Train Loss: {train_loss}")
             
             train_loss.backward() # Calculate the gradients using Back Propogation
             optimizer.step()

@@ -7,8 +7,8 @@ import pyvista as pv
 from pyvista import examples
 import trimesh
 
-import utils
-
+# import utils
+from utils import WeightedDelaunay, get_surface_tris_from_tet
 ######## ROUTINES ##########
 def cot1(x, y):
     return 1.0/tan(acos(np.dot(x, y)/(norm(x)*norm(y))))
@@ -183,8 +183,8 @@ def compute_HOT_tetra(v, w, degree=[1, 0, 0, 0]):
 # degree3 = weight combination for HOT functional on 3-simplices (tetrahedron)
 
 def compute_HOT(vertices, weights, degree2=[0, 1, 2], degree3=[1, 0, 0, 0]):
-    tetra_faces = utils.WeightedDelaunay(vertices, weights)
-    tri_faces = utils.get_surface_tris_from_tet(tetra_faces)
+    tetra_faces = WeightedDelaunay(vertices, weights)
+    tri_faces = get_surface_tris_from_tet(tetra_faces)
     HOT = 0
     # Go over each triangle and tetrahedron and sum up all HOT functionals (with correponding degrees)
     for tri in tri_faces:
@@ -197,14 +197,74 @@ def compute_HOT(vertices, weights, degree2=[0, 1, 2], degree3=[1, 0, 0, 0]):
         HOT += compute_HOT_tetra(v, w, degree3)
         
     return HOT
+
+def compute_HOT_with_tetra(vertices, weights, tetra_faces, degree3=[1, 0, 0, 0]):
+    HOT = 0
+    print(vertices.shape)
+    print(weights.shape)
+    print(tetra_faces.shape)
+    for tet in tetra_faces:
+        v = np.array([vertices[tet[0]], vertices[tet[1]], vertices[tet[2]], vertices[tet[3]]])
+        w = np.array([weights[tet[0]], weights[tet[1]], weights[tet[2]], weights[tet[3]]])
+        HOT += compute_HOT_tetra(v, w, degree3)
+        
+    return HOT
+
+def compute_HOT_with_tri(vertices, weights, tri_faces, degree2=[0, 1, 2]):
+    HOT = 0
+
+    # v = np.array([vertices[tri_faces[:,0]], vertices[tri_faces[:,1]], vertices[tri_faces[:,2]] ])
+    # w = np.array([weights[tri_faces[:,0]], weights[tri_faces[:,1]], weights[tri_faces[:,2]] ])
+
+    # for i in range(len(tri_faces)):
+    #     HOT += compute_HOT_tri(v[:, i], w[:, i], degree2)
+
+    for tri in tri_faces:
+        v = np.array([vertices[tri[0]], vertices[tri[1]], vertices[tri[2]]])
+        w = np.array([weights[tri[0]], weights[tri[1]], weights[tri[2]]])
+        HOT += compute_HOT_tri(v, w, degree2)
+        
+    return HOT
     
 # EXAMPLES of using compute_HOT
-vertices = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1], [0, 1, 1]], dtype=float)
-num_points = len(vertices)
-w = 10*np.random.rand(num_points)
-degree3=[1, 0, 0, 0]
-HOT = compute_HOT(vertices, w, degree3=degree3)
-print(f'The (combined) hot functional is {HOT}')
+vertices = np.array([[0, 0, 0], [1, 0, 0], [.5, 2, 0], [.5, .5, 1]], dtype=float)
+
+
+
+# num_points = len(vertices)
+# w = .5*np.random.rand(num_points)
+# # w = np.zeros(num_points)
+# verts_no_zs = vertices[:, :-1]
+# print(verts_no_zs.shape)
+
+# # remove last dimension temporarily
+
+# tetra_faces = WeightedDelaunay(vertices, w)
+# print(tetra_faces)
+# tri_faces = get_surface_tris_from_tet(tetra_faces)
+
+# for tri in tri_faces:
+#     v = np.array([vertices[tri[0]], vertices[tri[1]], vertices[tri[2]]])
+#     print('v[tri[]] shape', v)
+# tri_faces = np.array(list(tri_faces))
+
+# print('new')
+
+# print(tri_faces)
+
+# compute_HOT_with_tri(vertices, w, tri_faces)
+
+# v = np.array([vertices[tri_faces[:,0]], vertices[tri_faces[:,1]], vertices[tri_faces[:,2]] ])
+# weights = np.array([w[tri_faces[:,0]], w[tri_faces[:,1]], w[tri_faces[:,2]] ])
+
+# compute_HOT_tri(v, weights, [1,0,0])
+
+# mesh = trimesh.Trimesh(vertices, tetra_faces)
+# mesh.export(file_obj='test.stl')
+
+# degree3=[1, 0, 0, 0]
+# HOT = compute_HOT(vertices, w, degree3=degree3)
+# print(f'The (combined) hot functional is {HOT}')
 
 '''
 UNIT_TESTS:

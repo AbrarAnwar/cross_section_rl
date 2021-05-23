@@ -20,22 +20,38 @@ import utils
 
 import time
 
+import random
+
+import copy
 # os.environ['PYOPENGL_PLATFORM'] = 'egl'
 
 
 
 class SimpleCrossSectionEnv(gym.Env):
 
-  def __init__(self, input_file, k_state_neighborhood=5, previous_mesh_neighborhood=5, next_mesh_neighborhood=5, same_obs_size=False):
-    self.input_file = input_file
-    data = np.load(input_file, allow_pickle=True)
+  def __init__(self, input_files, k_state_neighborhood=5, previous_mesh_neighborhood=5, next_mesh_neighborhood=5, same_obs_size=False, trials=300, add_noise=True):
+    self.trials = trials
+    self.input_files = input_files
+
+    self.noise = .05
+
+    self.episode_number = 0
+
+
+    # from the list, choose a random one
+    f_idx = random.randrange(len(self.input_files))
+    data = np.load(self.input_files[f_idx], allow_pickle=True)
     self.M = data['cross_sections']
     self.sample_spacing = data['step']
+
     self.spacing_multiplier = 2
     self.folder_name = time.time()
+    self.file_name = self.input_files[f_idx].split(os.sep)[-1][:-4]
 
-    # for x in self.M:
-    #   x += np.random.normal(size=(x.shape), loc=0, scale=(.05))
+    self._max_episode_steps = len(self.M) + 1
+    # add noise
+    for x in self.M:
+      x += np.random.normal(size=(x.shape), loc=0, scale=(self.noise))
 
     self.same_obs_size = same_obs_size
 
@@ -51,8 +67,17 @@ class SimpleCrossSectionEnv(gym.Env):
     self.min_action = -.05
     self.max_action = .05
 
+
+
+    default = np.ones(shape=(longest*2))
+    spacing_clip = np.ones(shape=(1))
+
+    # self.action_space = spaces.Box(low=np.concatenate([default*self.min_action, 0*spacing_clip]), high=np.concatenate([default*self.max_action, spacing_clip]), dtype=np.float32, shape=(longest*2+1,))
+
+
+
     #self.action_space = spaces.Box(low=-np.inf, high=np.inf, dtype=np.float32, shape=shape)
-    self.action_space = spaces.Box(low=self.min_action, high=self.max_action, dtype=np.float32, shape=(longest*2,))
+    self.action_space = spaces.Box(low=self.min_action, high=self.max_action, dtype=np.float32, shape=(longest*2+1,))
     
     self.observation_space = spaces.Box(low=-np.inf, high=np.inf, dtype=np.float32, shape=shape)
 
@@ -68,17 +93,18 @@ class SimpleCrossSectionEnv(gym.Env):
     self.previous_mesh_neighborhood = previous_mesh_neighborhood
     self.next_mesh_neighborhood = next_mesh_neighborhood
 
-    self.curr_pts = None
-    self.curr_tri_face = None
-    self.curr_tetra_face = None
 
     self.first_rendering = True
     self.render_ax = None
-    self.renderer = pyrender.OffscreenRenderer(512, 512)
+    self.renderer = pyrender.OffscreenRenderer(256, 256)
+
+    self.prev_reward = 0
 
     self.state = None
 
     self.pts = None
+
+    self.ground_truth = copy.deepcopy(data['cross_sections'])
 
   def step(self, action):
 
@@ -86,22 +112,21 @@ class SimpleCrossSectionEnv(gym.Env):
     # print('action, min, max, mean', min(action), max(action), np.mean(action))
     #action = min(max(action, self.min_action), self.max_action)
 
+
+    # self.spacing_multiplier = np.abs(action[-1])
+    # spacing_reward = 0
+    # if self.spacing_multiplier < .05:
+    #   spacing_reward = -10
+    #   self.spacing_multiplier=1
+
+
     # expand for easier indexing if necessary
-    action = action.reshape(-1, 1)
+    action = action[:-1].reshape(-1, 1)
 
     # print('step_i: {} \t step_t: {}'.format(self.step_i, self.step_t))
-    # print(action.shape)
 
-    # if self.step_i == len(self.M):
-    #   # we are done. let's reconstruct the entire mesh and calculate the metrics as a reward
-    #   pts, tri_face, tetra_face, reward = utils.triangulate_list_and_reward(self.Mhat, self.sample_spacing, weights=None)
-    #   print('final reward', reward)
-    #   return np.array(self.state_neighborhood()), reward, True, {}
-
-    
-
-    action = np.clip(action, self.min_action, self.max_action)
-
+  
+    action = action/10.0
 
     if type(action) != int:
       action = action.reshape(-1, 2)
@@ -136,15 +161,72 @@ class SimpleCrossSectionEnv(gym.Env):
 
     # triangulate only the previous and current steps
 
-    pts, tri_face, tetra_face, reward = utils.triangulate_list_and_reward(to_reconstruct, self.sample_spacing*self.spacing_multiplier, weights=None)
+    pts, tri_face, tetra_face, local_reward = utils.triangulate_list_and_reward(to_reconstruct, self.sample_spacing*self.spacing_multiplier, weights=None)
     self.pts = pts
     self.tri_face = tri_face
     self.tetra_face = tetra_face 
 
     # store the faces that we get. These faces are only between two cross-sections, so they are going to be between 0 and 200
-    shifted_faces = tetra_face + (self.step_t - 1)*self.num_points # this 100 is the number of points!!!
+    shifted_faces = tri_face + (self.step_t - 1)*self.num_points # this 100 is the number of points!!!
     
     self.local_faces.append(shifted_faces)
+
+    reward = local_reward
+
+    old_err = (np.linalg.norm(self.ground_truth[self.step_i] - self.M[self.step_i] ))
+    new_err = (np.linalg.norm(self.ground_truth[self.step_i] - self.Mhat[self.step_i]))
+    # if negative, that means we got worse. if positive, we got better
+    err_reward = old_err - new_err
+
+    # if err_reward <= 0:
+    #   reward = 10*err_reward
+    #   print('not improving', new_err, old_err, err_reward)
+    # else:
+    #   print('improving', new_err, old_err, err_reward)
+    # reward += -10*new_err
+
+    # reward = new_err
+
+    if reward < 0:
+      reward = -10
+
+
+    total_reward = 0
+
+    # do i want the final reward to be based on the entire thing?
+    pts = np.empty(shape = (0,3))
+    for i, m in enumerate(self.Mhat):
+      col_to_add = np.ones(len(m))*i*self.sample_spacing
+      res = np.hstack([m, np.atleast_2d(col_to_add).T])
+      pts = np.concatenate([pts, res])
+
+    tri_face = np.empty(shape = (0,3), dtype=np.int64)
+    for i, m in enumerate(self.local_faces):
+      if(len(m) == 0):
+        print(m, m.shape)
+        total_reward = -100
+        break
+      tri_face = np.concatenate([tri_face, m])
+
+    if total_reward != -100:
+      total_reward = utils.pyvista_to_reward(pts, tri_face, face_size=3)
+
+
+    # diff_reward = 0
+    # if total_reward < self.prev_reward:
+    #   diff_reward = -10
+    # else:
+    #   diff_reward = np.abs(reward-self.prev_reward)
+
+    # self.prev_reward = total_reward
+
+    # total_reward = diff_reward
+
+    reward = 0
+    if local_reward < 0:
+      reward = -10
+    else:
+      reward = local_reward
 
 
     # done if at last time step
@@ -152,22 +234,21 @@ class SimpleCrossSectionEnv(gym.Env):
     if self.step_i == len(self.M)-1:
       done = True
 
-      # do i want the final reward to be based on the entire thing?
-      pts = np.empty(shape = (0,3))
-      for i, m in enumerate(self.Mhat):
-        col_to_add = np.ones(len(m))*i*self.sample_spacing
-        res = np.hstack([m, np.atleast_2d(col_to_add).T])
-        pts = np.concatenate([pts, res])
-
-      tetra_face = np.empty(shape = (0,4), dtype=np.int64)
-      for i, m in enumerate(self.local_faces):
-        tetra_face = np.concatenate([tetra_face, m])
-      total_reward = utils.pyvista_to_reward(pts, tetra_face)
-
-
-      return self.state_neighborhood(), total_reward, done, info
-
+      # Massive negative reward if we didn't succeed. Expected future reward should be lower
+      if total_reward < 0:
+          total_reward = -100
       return self.state_neighborhood(), reward, done, info
+
+      # return self.state_neighborhood(), reward, done, info
+
+ 
+      # total_reward = reward
+      # if total_reward < 0:
+      #   total_reward = -10
+      # else:
+      #   total_reward = 10
+
+
 
     # for simple case, step_t follows the size of self.Mhat
     self.step_t += 1
@@ -208,12 +289,15 @@ class SimpleCrossSectionEnv(gym.Env):
     return np.array(neighborhood)
 
 
-  def reset(self):
+  def reset(self, is_eval=False):
     if not os.path.exists('saved'):
       os.makedirs('saved')
 
     if not os.path.exists('saved/local_{}'.format(self.folder_name)):
       os.makedirs('saved/local_{}'.format(self.folder_name))
+    self.episode_number += 1
+
+    # render results from this step
 
     if len(self.Mhat) != 0:
       # local changes
@@ -224,43 +308,69 @@ class SimpleCrossSectionEnv(gym.Env):
         res = np.hstack([m, np.atleast_2d(col_to_add).T])
         pts = np.concatenate([pts, res])
 
-      tetra_face = np.empty(shape = (0,4), dtype=np.int64)
+      tri_face = np.empty(shape = (0,3), dtype=np.int64)
       for i, m in enumerate(self.local_faces):
-        tetra_face = np.concatenate([tetra_face, m])
-      print('gonna calc reward')
-      reward = utils.pyvista_to_reward(pts, tetra_face)
+        if(len(m) == 0):
+          continue
+        tri_face = np.concatenate([tri_face, m])
+      reward = utils.pyvista_to_reward(pts, tri_face, face_size=3)
       print('whole mesh quality: ', reward)
-      img = utils.draw(pts, tetra_face, self.renderer)
+      img = utils.draw(pts, tri_face, self.renderer)
 
-      t = time.time()
-      cv2.imwrite('saved/local_{}/sphere_{}_{:.4f}.png'.format(self.folder_name, t, reward), img)
+      if is_eval:
+        reward = reward
+        t = time.time()
+      else:
+        reward = ""
+        t = ""
 
-      mesh = trimesh.Trimesh(vertices=pts, faces=tetra_face)
-      mesh.export(file_obj='saved/local_{}/sphere_{}_{:.4f}.stl'.format(self.folder_name, t, reward))
+      cv2.imwrite('saved/local_{}/sphere_{}_{}.png'.format(self.folder_name, t, reward), img)
+
+      mesh = trimesh.Trimesh(vertices=pts, faces=tri_face)
+      # mesh = trimesh.voxel.ops.points_to_marching_cubes(pts)
+
+      mesh.export(file_obj='saved/local_{}/sphere_{}_{}.stl'.format(self.folder_name, t, reward))
 
 
     else:
       pts, tri_face, tetra_face, reward = utils.triangulate_list_and_reward(self.M, self.sample_spacing)
-      img = utils.draw(pts, tetra_face, self.renderer)
-      t = time.time()
-      cv2.imwrite('saved/local_{}/sphere_no_weights_no_local{}_{:.4f}.png'.format(self.folder_name, t, reward), img)
+      img = utils.draw(pts, tri_face, self.renderer)
 
-      mesh = trimesh.Trimesh(vertices=pts, faces=tetra_face)
-      mesh.export(file_obj='saved/local_{}/sphere_no_weights_no_local{}_{:.4f}.stl'.format(self.folder_name, t, reward))
+      if is_eval:
+        reward = reward
+        t = time.time()
+      else:
+        reward = ""
+        t = ""
 
+      cv2.imwrite('saved/local_{}/sphere_no_weights_no_local{}_{}.png'.format(self.folder_name, t, reward), img)
 
+      mesh = trimesh.Trimesh(vertices=pts, faces=tri_face)
+      # mesh = trimesh.voxel.ops.points_to_marching_cubes(pts)
+      mesh.export(file_obj='saved/local_{}/sphere_no_weights_no_local{}_{}.stl'.format(self.folder_name, t, reward))
+
+    
+
+    # properly reset
 
     self.Mhat = []
     self.step_i = 0
     self.step_t = 0
     self.local_faces = []
+    self.prev_reward = 0
 
-    # reset and add noise to Mhat
-    data = np.load(self.input_file, allow_pickle=True)
+
+    # from the list, choose a random one
+    f_idx = random.randrange(len(self.input_files))
+    data = np.load(self.input_files[f_idx], allow_pickle=True)
     self.M = data['cross_sections']
+    self.sample_spacing = data['step']
+    self.file_name = self.input_files[f_idx].split(os.sep)[-1][:-4]
 
-    # for x in self.M:
-    #   x += np.random.normal(size=(x.shape), loc=0, scale=(.05))
+
+    for x in self.M:
+      x += np.random.normal(size=(x.shape), loc=0, scale=(self.noise))
+      
 
     neighborhood = []
     if self.same_obs_size:
@@ -299,8 +409,10 @@ class SimpleCrossSectionEnv(gym.Env):
       res = np.hstack([m, np.atleast_2d(col_to_add).T])
       pts = np.concatenate([pts, res])
 
-    faces = np.empty(shape = (0,4), dtype=np.int64)
+    faces = np.empty(shape = (0,3), dtype=np.int64)
     for i, m in enumerate(self.local_faces):
+      if(len(m) == 0):
+        continue
       faces = np.concatenate([faces, m])
     img = utils.draw(pts, faces, self.renderer)
 
@@ -324,27 +436,39 @@ class SimpleCrossSectionEnv(gym.Env):
   def close(self):
     return
   
+  def __getstate__(self):
+    state = self.__dict__.copy()
+    # Don't pickle renderer since it has pointers
+    del state["renderer"]
+    return state
 
+  def __setstate__(self, state):
+    self.__dict__.update(state)
+    # Add renderer back since it doesn't exist in the pickle
+    self.renderer = pyrender.OffscreenRenderer(256, 256)
 
-# input_file = '/home/abrar/cross_section_rl/data/cross_section_data/sphere_resampled.npz'
-# env = SimpleCrossSectionEnv(input_file, same_obs_size=True)
+# input_file = '/home/abrar/cross_section_rl/data/cross_section_data/sphere_resampled_10verts_10sections.npz'
+# env = SimpleCrossSectionEnv(input_file, same_obs_size=True, add_noise=False)
 
 # # print(env.observation_space)
-# # env.reset()
+# env.reset()
 
 # # for i in range(len(env.M)):
 # done = False
 # i = 0
 # while not done:
-#   # obs, reward, done, _ = env.step(np.random.rand(200,1))
-#   obs, reward, done, _ = env.step(np.zeros((200,1)))
+#   # obs, reward, done, _ = env.step(np.random.rand(size=env.action_space.low.shape))
+#   # obs, reward, done, _ = env.step(np.zeros((200,1)))
+#   print(env.action_space.low.shape)
+#   obs, reward, done, _ = env.step(np.zeros((21,1)))
 
 #   print(i, obs.shape, reward, done)
 #   i+=1
 #   env.render()
 
-# env.reset()
+
+
+# env.reset(is_eval=True)
 # test1 = np.array([[1,2], [3,4], [5,6]])
 # test2 = np.array([[1,32], [3,64]])
 # triangulate_list([test1, test2], 1)
-
